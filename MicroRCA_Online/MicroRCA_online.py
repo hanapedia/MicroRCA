@@ -20,17 +20,30 @@ from sklearn import preprocessing
 
 ## =========== Data collection ===========
 
-metric_step = '5s'
+metric_step = '14s'
 smoothing_window = 12
 
 # kubectl get nodes -o wide | awk -F ' ' '{print $1 " : " $6":9100"}'
+# node_dict = {
+#                 'kubernetes-minion-group-103j' : '10.166.0.21:9100',
+#                 'kubernetes-minion-group-k2nz' : '10.166.15.235:9100',
+#                 'kubernetes-minion-group-kvcr' : '10.166.0.13:9100',
+#                 'kubernetes-minion-group-r23j' : '10.166.0.14:9100',
+#         }
 node_dict = {
-                'kubernetes-minion-group-103j' : '10.166.0.21:9100',
-                'kubernetes-minion-group-k2nz' : '10.166.15.235:9100',
-                'kubernetes-minion-group-kvcr' : '10.166.0.13:9100',
-                'kubernetes-minion-group-r23j' : '10.166.0.14:9100',
+                'cp1' : '192.168.100.254:9100',
+                'cp2' : '192.168.100.87:9100',
+                'node1' : '192.168.100.36:9100',
+                'node2' : '192.168.100.210:9100',
+                'node3' : '192.168.100.43:9100',
         }
 
+# NAME : INTERNAL-IP:9100
+# cp1 : 192.168.100.254:9100
+# cp2 : 192.168.100.87:9100
+# node1 : 192.168.100.36:9100
+# node2 : 192.168.100.210:9100
+# node3 : 192.168.100.43:9100
 
         
 
@@ -40,7 +53,7 @@ def latency_source_50(prom_url, start_time, end_time, faults_name):
 
 
     response = requests.get(prom_url,
-                            params={'query': 'histogram_quantile(0.50, sum(irate(istio_request_duration_seconds_bucket{reporter=\"source\", destination_workload_namespace=\"sock-shop\"}[1m])) by (destination_workload, source_workload, le))',
+                            params={'query': 'histogram_quantile(0.50, sum(irate(istio_request_duration_milliseconds_bucket{reporter="source", destination_workload_namespace="sock-shop"}[1m])) by (destination_workload, source_workload, le))',
                                     'start': start_time,
                                     'end': end_time,
                                     'step': metric_step})
@@ -63,7 +76,7 @@ def latency_source_50(prom_url, start_time, end_time, faults_name):
 
 
     response = requests.get(prom_url,
-                            params={'query': 'sum(irate(istio_tcp_sent_bytes_total{reporter=\"source\"}[1m])) by (destination_workload, source_workload) / 1000',
+                            params={'query': 'sum(irate(istio_tcp_sent_bytes_total{reporter="source"}[1m])) by (destination_workload, source_workload) / 1000',
                                     'start': start_time,
                                     'end': end_time,
                                     'step': metric_step})
@@ -97,7 +110,7 @@ def latency_destination_50(prom_url, start_time, end_time, faults_name):
 
 
     response = requests.get(prom_url,
-                            params={'query': 'histogram_quantile(0.50, sum(irate(istio_request_duration_seconds_bucket{reporter=\"destination\", destination_workload_namespace=\"sock-shop\"}[1m])) by (destination_workload, source_workload, le))',
+                            params={'query': 'histogram_quantile(0.50, sum(irate(istio_request_duration_milliseconds_bucket{reporter="destination", destination_workload_namespace="sock-shop"}[1m])) by (destination_workload, source_workload, le))',
                                     'start': start_time,
                                     'end': end_time,
                                     'step': metric_step})
@@ -120,7 +133,7 @@ def latency_destination_50(prom_url, start_time, end_time, faults_name):
 
 
     response = requests.get(prom_url,
-                            params={'query': 'sum(irate(istio_tcp_sent_bytes_total{reporter=\"destination\"}[1m])) by (destination_workload, source_workload) / 1000',
+                            params={'query': 'sum(irate(istio_tcp_sent_bytes_total{reporter="destination"}[1m])) by (destination_workload, source_workload) / 1000',
                                     'start': start_time,
                                     'end': end_time,
                                     'step': metric_step})
@@ -149,7 +162,7 @@ def latency_destination_50(prom_url, start_time, end_time, faults_name):
 
 def svc_metrics(prom_url, start_time, end_time, faults_name):
     response = requests.get(prom_url,
-                            params={'query': 'sum(rate(container_cpu_usage_seconds_total{namespace="sock-shop", container_name!~\'POD|istio-proxy|\'}[1m])) by (pod_name, instance, container)',
+                            params={'query': 'sum(rate(container_cpu_usage_seconds_total{namespace="sock-shop", container_name!~"POD|istio-proxy|"}[1m])) by (pod_name, instance, container)',
                                     'start': start_time,
                                     'end': end_time,
                                     'step': metric_step})
@@ -297,8 +310,12 @@ def mpg(prom_url, faults_name):
     DG = nx.DiGraph()
     df = pd.DataFrame(columns=['source', 'destination'])
     response = requests.get(prom_url,
-                            params={'query': 'sum(istio_tcp_received_bytes_total) by (source_workload, destination_workload)'
+                            params={'query': 'sum(istio_tcp_received_bytes_total) by (source_workload, destination_workload)',
+                                'start': start_time,
+                                'end': end_time,
+                                'step': metric_step
                                     })
+    # print(response.json())
     results = response.json()['data']['result']
 
     for result in results:
@@ -309,11 +326,14 @@ def mpg(prom_url, faults_name):
         df = df.append({'source':source, 'destination': destination}, ignore_index=True)
         DG.add_edge(source, destination)
         
-        DG.node[source]['type'] = 'service'
-        DG.node[destination]['type'] = 'service'
+        DG._node[source]['type'] = 'service'
+        DG._node[destination]['type'] = 'service'
 
     response = requests.get(prom_url,
-                            params={'query': 'sum(istio_requests_total{destination_workload_namespace=\'sock-shop\'}) by (source_workload, destination_workload)'
+                            params={'query': 'sum(istio_requests_total{destination_workload_namespace="sock-shop"}) by (source_workload, destination_workload)',
+                                'start': start_time,
+                                'end': end_time,
+                                'step': metric_step
                                     })
     results = response.json()['data']['result']
 
@@ -326,11 +346,14 @@ def mpg(prom_url, faults_name):
         df = df.append({'source':source, 'destination': destination}, ignore_index=True)
         DG.add_edge(source, destination)
         
-        DG.node[source]['type'] = 'service'
-        DG.node[destination]['type'] = 'service'
+        DG._node[source]['type'] = 'service'
+        DG._node[destination]['type'] = 'service'
 
     response = requests.get(prom_url,
-                            params={'query': 'sum(container_cpu_usage_seconds_total{namespace="sock-shop", container_name!~\'POD|istio-proxy\'}) by (instance, container)'
+                            params={'query': 'sum(container_cpu_usage_seconds_total{namespace="sock-shop", container_name!~"POD|istio-proxy"}) by (instance, container)',
+                                'start': start_time,
+                                'end': end_time,
+                                'step': metric_step
                                     })
     results = response.json()['data']['result']
     for result in results:
@@ -341,8 +364,8 @@ def mpg(prom_url, faults_name):
             df = df.append({'source':source, 'destination': destination}, ignore_index=True)
             DG.add_edge(source, destination)
             
-            DG.node[source]['type'] = 'service'
-            DG.node[destination]['type'] = 'host'
+            DG._node[source]['type'] = 'service'
+            DG._node[destination]['type'] = 'host'
 
     filename = faults_name + '_mpg.csv'
 ##    df.set_index('timestamp')
@@ -427,7 +450,7 @@ def svc_personalization(svc, anomaly_graph, baseline_df, faults_name):
         edges_weight_avg = edges_weight_avg + data['weight']
 
     for u, v, data in anomaly_graph.out_edges(svc, data=True):
-        if anomaly_graph.nodes[v]['type'] == 'service':
+        if anomaly_graph._node[v]['type'] == 'service':
             num = num + 1
             edges_weight_avg = edges_weight_avg + data['weight']
 
@@ -490,8 +513,8 @@ def anomaly_subgraph(DG, anomalies, latency_df, faults_name, alpha):
 
             data = round(data, 3)
             anomaly_graph.add_edge(u,v, weight=data)
-            anomaly_graph.nodes[u]['type'] = DG.nodes[u]['type']
-            anomaly_graph.nodes[v]['type'] = DG.nodes[v]['type']
+            anomaly_graph._node[u]['type'] = DG.nodes[u]['type']
+            anomaly_graph._node[v]['type'] = DG.nodes[v]['type']
 
        # Set personalization with container resource usage
         for u, v, data in DG.out_edges(node, data=True):
@@ -500,15 +523,15 @@ def anomaly_subgraph(DG, anomalies, latency_df, faults_name, alpha):
                 data = alpha
             else:
 
-                if DG.nodes[v]['type'] == 'host':
+                if DG._node[v]['type'] == 'host':
                     data, col = node_weight(u, anomaly_graph, baseline_df, faults_name)
                 else:
                     normal_edge = u + '_' + v
                     data = baseline_df[u].corr(latency_df[normal_edge])
             data = round(data, 3)
             anomaly_graph.add_edge(u,v, weight=data)
-            anomaly_graph.nodes[u]['type'] = DG.nodes[u]['type']
-            anomaly_graph.nodes[v]['type'] = DG.nodes[v]['type']
+            anomaly_graph._node[u]['type'] = DG.nodes[u]['type']
+            anomaly_graph._node[v]['type'] = DG.nodes[v]['type']
 
 
     for node in nodes:
@@ -521,7 +544,7 @@ def anomaly_subgraph(DG, anomalies, latency_df, faults_name, alpha):
     edges = list(anomaly_graph.edges(data=True))
 
     for u, v, d in edges:
-        if anomaly_graph.nodes[node]['type'] == 'host':
+        if anomaly_graph._node[node]['type'] == 'host':
             anomaly_graph.remove_edge(u,v)
             anomaly_graph.add_edge(v,u,weight=d['weight'])
 
@@ -564,6 +587,10 @@ def parse_args():
                     default='http://localhost:9090/api/v1/query',
                     help='url of prometheus query')
 
+    parser.add_argument('--time', type=float, required=False,
+                    default=1662556769.906268,
+                    help='time of prometheus query')
+
     return parser.parse_args()
 
 
@@ -573,10 +600,11 @@ if __name__ == '__main__':
     folder = args.folder
     len_second = args.length
     prom_url = args.url
+    time = args.time
       
     faults_name = folder
     
-    end_time = time.time()
+    end_time = time # time.time()
     start_time = end_time - len_second
 
 
@@ -586,7 +614,10 @@ if __name__ == '__main__':
 
     latency_df_source = latency_source_50(prom_url, start_time, end_time, faults_name)
     latency_df_destination = latency_destination_50(prom_url, start_time, end_time, faults_name)
-    latency_df = latency_df_destination.add(latency_df_source) 
+    # print(latency_df_destination.iloc[:, 1:].shape)
+    # print(latency_df_source.iloc[:, 1:].shape)
+    latency_df = latency_df_destination.iloc[:, 1:].add(latency_df_source.iloc[:, 1:])
+    # print(latency_df.shape)
     
     
     svc_metrics(prom_url, start_time, end_time, faults_name)
@@ -612,7 +643,7 @@ if __name__ == '__main__':
     for anomaly_target in anomaly_score:
         node = anomaly_target[0]
 #                        print(anomaly_target[0])
-        if DG.nodes[node]['type'] == 'service':
+        if DG._node[node]['type'] == 'service':
             anomaly_score_new.append(anomaly_target)
     print(anomaly_score_new)
 

@@ -276,6 +276,7 @@ if __name__ == '__main__':
     ad_threshold = 0.045  
     
     
+    # folders = ['1', '2', '3', '4', '5']
     folders = ['1', '2', '3', '4', '5']
     faults_type = ['svc_latency', 'service_cpu', 'service_memory'] #, 'service_memory', 'svc_latency'
 #    faults_type = ['svc_latency', 'service_cpu']
